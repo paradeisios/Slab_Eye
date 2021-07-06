@@ -1,0 +1,383 @@
+---
+title: "Slab Eye Testing"
+output: html_document
+---
+```{r}
+rm(list = ls())
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(gazer)
+library(ggpubr)
+library(lubridate)
+library(ggpubr)
+library(mgcv)
+
+
+options(scipen = 999)
+options(digits.secs=3)
+```
+
+```{r}
+# functions used 
+fix.time <- function(times){
+  
+  library(lubridate)
+  library(stringi)
+  
+  gc()
+  times <- as.character(times)
+  x <- c("-","-"," ",":",":",".")
+  y <- c(4,6,8,10,12,14)
+  changes <- data.frame( x, y)
+  
+  for(ii in seq(1,length(times))){
+    extra <- 0
+    
+    for(jj in seq(1,dim(changes)[1])){
+      
+      stri_sub(times[ii],changes[jj,2]+1+extra,changes[jj,2]+extra) <- changes[jj,1]
+      extra = extra+1
+    }
+  }
+  gc()
+  return(times)}
+
+to.milliseconds <- function(times){
+  
+  library(lubridate)
+  
+  secs <- second(times)
+  counter = 0
+  start_time = secs[1]*1000
+  
+  temp=vector()
+  temp[1]=start_time
+  
+  for(i in seq(from=2,to=length(secs))){
+    if(secs[i]<1 && secs[i-1]>59){
+      counter=counter+1
+    }
+    temp[i] <-  (secs[i] + 60*counter)*1000
+  }
+  
+  return(temp-temp[1])
+}
+
+specify.trials = function(blocks){
+  counter = 1
+  temp = vector()
+
+  temp[1]=1
+  for(i in seq(2,length(blocks))){
+   if (blocks[i-1]==5 && blocks[i]!=5){
+      counter = counter +1 
+    }
+   temp[i]=counter
+  }
+  
+  return(temp)
+}
+
+make.global.targets <- function(df){
+  
+  message <- vector()
+  message[1]<-"shape"
+  
+  for(i in seq(from=2,to=length(df$NUMSQUARE))){
+   
+       if(df$NUMSQUARE[i]==5 & df$NUMSQUARE[i-1]!=5 & df$NUMBLOCK[i]==5){
+        message[i] = "target"
+       } 
+       else if(df$NUMSQUARE[i]!=df$NUMSQUARE[i-1]){
+       message[i] = "shape"
+       }
+      else{
+        message[i] = NA
+      }
+   }
+  return(message)
+}
+
+clean.data <- function(df){
+
+print("Adding first trials as the last ones of the previous block ...")
+df$trial <-specify.trials(df$NUMBLOCK)
+df<-df[df$trial!= 1,]
+df$trial <- ifelse(df$NUMBLOCK==1 |df$NUMBLOCK==2,df$trial-1,df$trial)
+df<-df[df$trial!= 1,]
+
+print("Fixing Time ...")
+df$mytimestamp <- fix.time(df$mytimestamp)
+df$mytimestamp <- as.POSIXct(df$mytimestamp, "%Y-%m-%d %H:%M:%OS",tz="Israel")
+df$time <- to.milliseconds(df$mytimestamp)
+
+print("Adding onset trigger message at the end of each trial ...")
+df$message <- make.global.targets(df)
+
+df$subject <-as.factor(c(rep(1,dim(df)[1]))) ### add subject ID
+df$GLOBAL <- as.factor(df$GLOBAL)
+df$LOCAL <- as.factor(df$LOCAL)
+df$NUMSQUARE <- as.factor(df$NUMSQUARE)
+df$NUMBLOCK <- as.factor(df$NUMBLOCK)
+df$VISIBLE <- as.character(df$VISIBLE)
+
+df$right.pupil_diameter_mm <- ifelse(df$right.pupil_diameter_mm == -1,NA,df$right.pupil_diameter_mm) 
+df$left.pupil_diameter_mm <- ifelse(df$left.pupil_diameter_mm == -1,NA,df$left.pupil_diameter_mm) 
+
+df %>%
+  filter(trial!=1) %>%  #remove first block to make sure there are no effects of adjustment to the eye tr
+  filter(!(VISIBLE != "VISIBLE" & NUMSQUARE==5 & trial == 100)) -> df #remove extra rows after
+
+return (df)
+}
+
+create.report <- function(df){
+
+  fname <- deparse(substitute(df))
+  pdf(paste(fname,"plots.pdf",sep="_") ,onefile = TRUE,width = 15, height = 7)
+  
+  if (fname=="df.eye"){
+  for(i in unique(df$trial)) {   
+    abc <- ggplot(data=df[df$trial ==i,])+
+      geom_path(aes(x=time,y=pupil))+
+      labs(title = i)
+    print(abc)
+  }}
+  else if(fname=="pup_extend"){
+    for(i in unique(df$trial)) {   
+    abc <- ggplot(data=df[df$trial ==i,])+
+      geom_path(aes(x=time,y=extendpupil))+
+      labs(title = i)
+    print(abc)
+    }}
+  else if(fname=="smooth_interp"){
+    for(i in unique(df$trial)) {   
+    abc <- ggplot(data=df[df$trial ==i,])+
+      geom_path(aes(x=time,y=pup_interp))+
+      labs(title = i)
+    print(abc)
+    }}
+  else if(fname=="mad_removed"){
+    for(i in unique(df$trial)) {   
+    abc <- ggplot(data=df[df$trial ==i,])+
+      geom_path(aes(x=time,y=pup_interp))+
+      labs(title = i)
+    print(abc)
+    }}
+  else if(fname=="baseline_pupil"){
+    for(i in unique(df$trial)) {   
+    abc <- ggplot(data=df[df$trial ==i,])+
+      geom_path(aes(x=time,y=baselinecorrectedp))+
+      labs(title = i)
+    print(abc)
+    }}
+  else if(fname=="preprocessed_eye"){
+    for(i in unique(df$trial)) {   
+    abc <- ggplot(data=df[df$trial ==i,])+
+      geom_path(aes(x=time_zero,y=pupil_z))+
+      labs(title = i)
+    print(abc)
+    }}
+  dev.off()
+
+}
+
+```
+
+```{r}
+filepath = "C://Users//mpoul//Desktop//eye_tracking_data//slab_EYE_TRACKING_20210627-ariel.txt"
+df = read.csv(filepath,sep=",",header = TRUE)
+```
+
+
+
+
+```{r}  
+df %>%
+  clean.data(.) %>%
+  select(subject,trial,time,right.pupil_diameter_mm,right.gaze_direction_normalized.x,right.gaze_direction_normalized.y,GLOBAL,
+         LOCAL,NUMSQUARE,NUMBLOCK,message) %>%
+  rename(pupil=right.pupil_diameter_mm) %>% 
+  group_by(trial)%>%
+  mutate(time=time-first(time)) -> df.eye #reshape the time so each trial starts from 0
+
+create.report(df.eye) #makes a pdf of each trial
+```
+
+```{r}
+pup_extend<- df.eye %>% 
+  mutate(extendpupil=extend_blinks(pupil, fillback=100, fillforward=100, hz=90))
+
+to_delete = vector()
+for(i in unique(pup_extend$trial)){
+ data <- pup_extend[pup_extend$trial==i,]$extendpupil
+ if ( sum(is.na(data))/length(data) < .2){
+   to_delete<-append(to_delete,i)
+ }
+}
+
+pup_extend <- pup_extend %>%
+              filter(trial %in% to_delete)
+
+create.report(pup_extend)
+```
+
+```{r}
+smooth_interp <- smooth_interpolate_pupil(pup_extend, 
+                                          pupil="pupil", 
+                                          extendpupil="extendpupil", 
+                                          extendblinks=TRUE, 
+                                          step.first="interp", 
+                                          filter="moving",
+                                          maxgap=Inf, 
+                                          type="linear", 
+                                          hz=90, 
+                                          n=5)
+
+
+create.report(smooth_interp)
+```
+
+```{r}
+#remove mad values
+mad_removed <- smooth_interp %>%
+               group_by(subject, trial) %>% 
+               mutate(speed=speed_pupil(pup_interp,time)) %>%
+               mutate(MAD=calc_mad(speed))%>%
+               filter(speed < MAD)
+
+create.report(mad_removed)
+```
+
+
+```{r}
+baseline_pupil <- baseline_correction_pupil_msg(mad_removed,pupil_colname = "pup_interp",baseline_dur = 10,
+                                               event="target",baseline_method = "sub")
+create.report(baseline_pupil)
+                 
+preprocessed_eye <- baseline_pupil %>% 
+                    group_by(subject, trial) %>%  
+                    mutate(time_zero=onset_pupil(time, message, event=c("target"))) %>%
+                    ungroup() %>% 
+                    mutate(pupil_z = scale(baselinecorrectedp)) -> preprocessed_eye 
+                 
+create.report(preprocessed_eye)
+```
+
+```{r}
+standard = preprocessed_eye[(preprocessed_eye$GLOBAL== "Standard"),]
+deviant =  preprocessed_eye[(preprocessed_eye$GLOBAL== "Deviant"),]
+
+standard$local.group <- as.character(rep(NA,length(standard$trial)))
+deviant$local.group <- as.character(rep(NA,length(deviant$trial)))
+
+for(i in unique(standard$trial)){
+  condition<- as.character(standard[standard$trial==i & standard$NUMSQUARE==5 & standard$NUMBLOCK==5 & standard$message=="target",]$LOCAL[1])
+  #print(rep(condition,length(standard[standard$trial==i,]$trial)))
+  standard[standard$trial==i,]$local.group <- rep(condition,length(standard[standard$trial==i,]$trial))
+}
+
+for(i in unique(deviant$trial)){
+  condition<- as.character(deviant[deviant$trial==i & deviant$NUMSQUARE==5 & deviant$NUMBLOCK==5 & deviant$message=="target",]$LOCAL[1])
+  #print(rep(condition,length(standard[standard$trial==i,]$trial)))
+  deviant[deviant$trial==i,]$local.group <- rep(condition,length(deviant[deviant$trial==i,]$trial))
+}
+
+standard$local.group <-as.factor(standard$local.group)
+deviant$local.group <-as.factor(deviant$local.group)
+
+standard.square <- drop_na(standard[standard$local.group=="Square",])
+standard.diamond <- drop_na(standard[standard$local.group=="Diamond",])
+deviant.square<- drop_na(deviant[deviant$local.group=="Square",])
+deviant.diamond<- drop_na(deviant[deviant$local.group=="Diamond",])
+```
+
+```{r}
+
+standard.square %>%
+  group_by(subject,trial) %>%
+  mutate(bin_second = as.integer(time_zero/1000)) %>% 
+  group_by(bin_second) %>% 
+  summarize(pupil.per.sec = mean(baselinecorrectedp))-> standard.square
+
+standard.diamond %>%
+  group_by(subject,trial) %>%
+  mutate(bin_second = as.integer(time_zero/1000)) %>% 
+  group_by(bin_second) %>% 
+  summarize(pupil.per.sec = mean(baselinecorrectedp))-> standard.diamond
+
+deviant.square %>%
+  group_by(subject,trial) %>%
+  mutate(bin_second = as.integer(time_zero/1000)) %>% 
+  group_by(bin_second) %>% 
+  summarize(pupil.per.sec = mean(baselinecorrectedp))-> deviant.square
+
+
+deviant.diamond %>%
+  group_by(subject,trial) %>%
+  mutate(bin_second = as.integer(time_zero/1000)) %>% 
+  group_by(bin_second) %>% 
+  summarize(pupil.per.sec = mean(baselinecorrectedp))-> deviant.diamond 
+
+```
+
+```{r}
+standard <- ggplot() +
+  geom_smooth(data=standard.square,aes(x=bin_second,y=pupil.per.sec),color="red",se=FALSE)+
+  geom_smooth(data=standard.diamond,aes(x=bin_second,y=pupil.per.sec),color="blue",se=FALSE)
+
+deviant <- ggplot() +
+  geom_smooth(data=deviant.square,aes(x=bin_second,y=pupil.per.sec),color="red",se=FALSE)+
+  geom_smooth(data=deviant.diamond,aes(x=bin_second,y=pupil.per.sec),color="blue",se=FALSE)
+```
+
+```{r}
+ggarrange(standard,deviant,nrow=2)
+```
+```{r}
+standard.error <- rbind(drop_na(standard[standard$local.group=="Square",]),
+                        drop_na(standard[standard$local.group=="Diamond",]))
+
+deviant.error  <- rbind(drop_na(deviant[deviant$local.group=="Square",]),
+                  drop_na(deviant[deviant$local.group=="Diamond",]))
+
+standard.error  %>%
+  group_by(subject,trial,local.group) %>%
+  mutate(bin_second = as.integer(time_zero/1000))  %>%
+  ungroup() %>%
+  group_by(local.group,bin_second) %>% 
+  summarise(pupil = mean(pupil_z ),
+            sd = sd(pupil_z)) -> standard.error
+
+
+standard.plot <- ggplot(standard.error, aes(x=bin_second, y=pupil,group=local.group, color=local.group)) + 
+       geom_line() +
+       geom_point()+
+       geom_errorbar(aes(ymin=pupil-sd, ymax=pupil+sd), width=.2, position=position_dodge(0.05))+
+       ggtitle("Condition: Standard")+
+       xlab("Seconds")+
+       ylab("Normalized Pupil Dilation")
+
+
+deviant.error  %>%
+  group_by(subject,trial,local.group) %>%
+  mutate(bin_second = as.integer(time_zero/1000))  %>%
+  ungroup() %>%
+  group_by(local.group,bin_second) %>% 
+  summarise(pupil = mean(pupil_z ),
+            sd = sd(pupil_z)) -> deviant.error
+
+deviant.plot <- ggplot(deviant.error, aes(x=bin_second, y=pupil,group=local.group, color=local.group)) + 
+       geom_line() +
+       geom_point()+
+       geom_errorbar(aes(ymin=pupil-sd, ymax=pupil+sd), width=.2, position=position_dodge(0.05))+
+       ggtitle("Condition: Deviant")+
+       xlab("Seconds")+
+       ylab("Normalized Pupil Dilation")
+
+pupil.effect <- ggarrange(standard.plot,deviant.plot,ncol = 2)
+
+```
+

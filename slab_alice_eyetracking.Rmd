@@ -1,0 +1,334 @@
+---
+title: "Slab Alice Eye-Tracking"
+output: html_notebook
+---
+
+
+```{r,results='hide'}
+rm(list = ls())
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(gazer)
+library(ggpubr)
+library(lubridate)
+library(ggpubr)
+library(mgcv)
+
+options(scipen = 999)
+options(digits.secs=3)
+```
+
+```{r}
+fix.time <- function(df){
+  
+  library(lubridate)
+  library(stringi)
+  
+  print("Adding column of full datetime ..")
+  gc()
+  times <- as.character(df$TimeStamp)
+  x <- c(":",":",".")
+  y <- c(2,4,6)
+  changes <- data.frame( x, y)
+  
+  for(ii in seq(1,length(times))){
+    extra <- 0
+    
+    for(jj in seq(1,dim(changes)[1])){
+      
+      stri_sub(times[ii],changes[jj,2]+1+extra,changes[jj,2]+extra) <- changes[jj,1]
+      extra = extra+1
+    }
+  }
+  gc()
+  
+  df$time_full <- as.POSIXct(times, "%H:%M:%OS",tz="Israel")
+  print("Adding column of milliseconds ..")
+  
+  secs <- second(df$time_full)
+  counter = 0
+  start_time = secs[1]*1000
+  
+  temp=vector()
+  temp[1]=start_time
+  
+  for(i in seq(from=2,to=length(secs))){
+    if(secs[i]<1 && secs[i-1]>59){
+      counter=counter+1
+    }
+    temp[i] <-  (secs[i] + 60*counter)*1000
+  }
+  
+  df$time <- temp-temp[1]
+  return(df)
+  }
+
+
+add.trials <- function(df){
+  
+  print("Adding markers for the trials ...")
+  
+  trial <- vector()
+  trial_counter <- 1
+  trial[1] <- trial_counter
+  
+  for(i in seq(2,length(df$FrameNumber))){
+    if ((df$SceneName[i]=="BlackScreen" |df$SceneName[i]=="Question-PostDelay") & df$SceneName[i-1] == "Question"){
+      trial_counter <- trial_counter + 1
+    }
+    trial[i] <- trial_counter
+  }
+  df$trial <- trial
+  return(df)
+} 
+
+add.visibility <- function(df){
+  
+  print("Adding markers for what the participant was viewing ...")
+  
+  visibility <- vector()
+  curr_visible <- "Darkness"
+  visibility[1]<- curr_visible
+  
+  for(i in seq(2,length(df$FrameNumber))){
+    if(as.character(df$SecondarySceneName[i]) == "Log: BlockViewDropOrder"){
+      curr_visible <- df$SceneName[i]
+    }
+    if(as.character(df$SecondarySceneName[i]) == "Log: BlockViewTurnOnOrder"){
+      curr_visible <- "Darkness"
+    }
+    visibility[i] <- curr_visible
+  }
+  df$What.Visible <- visibility
+  return(df)
+}
+
+add.conditions <- function(df){
+  
+  condition <- vector()
+  ascending <- vector()
+  
+  code <- c(33,121,122,301,601,602)
+  alterations <- c("Ripple","Delay","Speed","Saturation","Shrink","Grow")
+  encoder <- data.frame(code,alterations)
+  
+
+  
+  for (i in seq(length(df$TrialNumber))){
+    
+    if (nchar(df$TrialNumber[i])==6){
+      condition_code <- substr(as.character(df$TrialNumber[i]),1,2)
+      room_code <- substr(as.character(df$TrialNumber[i]),3,4)
+      ascending_code <- substr(as.character(df$TrialNumber[i]),5,6)
+      condition[i] <- encoder[encoder$code== as.numeric(condition_code),]$alterations
+      if(ascending_code == "02"){
+        ascending[i]<- 1
+      }else{
+        ascending[i]<-0
+      }
+    }
+    
+    if (nchar(df$TrialNumber[i])==7){
+      condition_code <- substr(as.character(df$TrialNumber[i]),1,3)
+      ascending_code <- substr(as.character(df$TrialNumber[i]),6,7)
+      condition[i] <- encoder[encoder$code== as.numeric(condition_code),]$alterations
+      if(ascending_code == "02"){
+        ascending[i]<- 1
+      }else{
+        ascending[i]<-0
+      }
+    }
+  }
+  
+  df$Alteration <- condition
+  df$if.Ascending <- ascending
+  
+  return(df)}
+
+
+add.whether.altered <- function(df) {
+
+  print("Adding tag whether trial was altered ...")
+  alteration_df <- df %>% select(trial, TrialNumber, What.Visible) %>% mutate(What.Visible = ifelse(What.Visible !="Room", -1, 1))
+  
+  if.altered <- vector()
+  
+  
+  for (i in unique(df$trial)) {
+    trial  <- alteration_df[alteration_df$trial == i, ]
+    temp <- vector()
+    
+    if (nchar(trial$TrialNumber[i]) == 6) {
+      if (substr(as.character(trial$TrialNumber[1]), 3, 4) == "01") {
+        to.tag <- 1
+        temp[1] <- to.tag
+        
+        for (jj in seq(2, length(trial$TrialNumber))) {
+          temp[jj] <- to.tag
+          
+          if (trial$What.Visible[jj] == -1 & trial$What.Visible[jj - 1] == 1) {
+            to.tag <- 0
+          }
+          
+        }
+      }
+      if (substr(as.character(trial$TrialNumber[1]), 3, 4) == "02") {
+        to.tag <- 0
+        temp[1] <- to.tag
+        
+        for (jj in seq(2, length(trial$TrialNumber))) {
+          temp[jj] <- to.tag
+          
+          if (trial$What.Visible[jj] == -1 & trial$What.Visible[jj - 1] == 1) {
+            to.tag <- 1
+          }
+          
+        }
+      }
+    }
+    
+    if (nchar(trial$TrialNumber[i]) == 7){
+      
+      if (substr(as.character(trial$TrialNumber[1]), 4, 5) == "01") {
+        to.tag <- 1
+        temp[1] <- to.tag
+        
+        for (jj in seq(2, length(trial$TrialNumber))) {
+          temp[jj] <- to.tag
+          
+          if (trial$What.Visible[jj] == -1 & trial$What.Visible[jj - 1] == 1) {
+            to.tag <- 0
+          }
+          
+        }
+      }
+    
+      if (substr(as.character(trial$TrialNumber[1]), 4, 5) == "02") {
+        to.tag <- 0
+        temp[1] <- to.tag
+        
+        for (jj in seq(2, length(trial$TrialNumber))) {
+          temp[jj] <- to.tag
+          
+          if (trial$What.Visible[jj] == -1 & trial$What.Visible[jj - 1] == 1) {
+            to.tag <- 1
+          }
+          
+        }
+      }
+    }
+    if.altered <- c(if.altered, temp)
+  }
+  
+  ifelse(if.altered == 1,"Altered","Control") -> df$if.Altered
+  df[df$What.Visible != "Room",]$if.Altered <- "NA"
+  ifelse(df$if.Altered == "NA",NA,df$if.Altered) -> df$if.Altered
+  
+  return(df)}
+```
+
+```{r}
+df_fname <- "C:\\Users\\mpoul\\Desktop\\eye_tracking_data\\paris\\20210705120936942\\TrackersOutputData.csv"
+df <- read.csv(df_fname )
+```
+
+
+
+```{r}
+df %>% filter(TrialNumber!=1) -> df #remove callibration phase
+df %>% add.visibility() -> df
+df %>% filter(row_number() %% 2 == 0) ->df
+df %>% fix.time() -> df
+df %>% add.trials() -> df # add onset of each trial
+df %>% group_by(trial) %>% mutate(time = time - first(time)) -> df
+df %>% add.conditions() -> df
+df %>% add.whether.altered -> df
+df$subject <- rep(1,length(df$FrameNumber))
+ifelse(df$right.pupil_diameter_mm == -1,NA,df$right.pupil_diameter_mm) -> df$right.pupil_diameter_mm
+ifelse(df$left.pupil_diameter_mm  == -1,NA,df$left.pupil_diameter_mm) ->  df$left.pupil_diameter_mm
+```
+
+```{r}
+
+df %>% select(subject,time,trial,
+              right.pupil_diameter_mm,left.pupil_diameter_mm,
+              right.gaze_direction_normalized.x,right.gaze_direction_normalized.y,right.gaze_direction_normalized.z,
+              left.gaze_direction_normalized.x,left.gaze_direction_normalized.y,left.gaze_direction_normalized.z,
+              LastObject,What.Visible,Alteration,if.Altered,if.Ascending,) -> df.eye.raw
+head(df.eye.raw,50)
+```
+
+```{r}
+corr <- ggplot(data=df.eye.raw,aes(x=right.pupil_diameter_mm,left.pupil_diameter_mm))+
+  geom_point()+
+  ggtitle(sprintf("Right/Left Diameter - Correlation: %.3f",cor(df$right.pupil_diameter_mm,df$right.pupil_diameter_mm,use="complete.obs")))+
+  labs(x="Right",y="Left")+ 
+  theme(plot.title = element_text(size = 10))
+
+x <- ggplot(data=df.eye.raw,aes(x=right.gaze_direction_normalized.x,left.gaze_direction_normalized.x))+
+  geom_point()+
+  ggtitle(sprintf("Right/Left X position - Correlation: %.3f",cor(df$right.gaze_direction_normalized.x, df$left.gaze_direction_normalized.x)))+
+  labs(x="Right",y="Left")+ 
+  theme(plot.title = element_text(size = 10))
+
+y <- ggplot(data=df.eye.raw,aes(x=right.gaze_direction_normalized.y,left.gaze_direction_normalized.y))+
+  geom_point()+
+  ggtitle(sprintf("Right/Left Y position - Correlation: %.3f",cor(df$right.gaze_direction_normalized.y, df$left.gaze_direction_normalized.y)))+
+  labs(x="Right",y="Left")+ 
+  theme(plot.title = element_text(size = 10))
+
+z <- ggplot(data=df.eye.raw,aes(x=right.gaze_direction_normalized.z,left.gaze_direction_normalized.z))+
+  geom_point()+
+  ggtitle(sprintf("Right/Left Z position - Correlation: %.3f",cor(df$right.gaze_direction_normalized.z, df$left.gaze_direction_normalized.z)))+
+  labs(x="Right",y="Left")+ 
+  theme(plot.title = element_text(size = 10))
+
+ggarrange(corr,x,y,z,ncol=2,nrow=2)
+```
+
+```{r}
+trials <- 1
+
+raw<-ggplot(data=df.eye.raw[df.eye.raw$trial %in% trials,],aes(x=time,y=right.pupil_diameter_mm))+
+  geom_path()+
+  facet_wrap(~trial)
+```
+
+```{r}
+df.eye.pup_extended<- df.eye.raw %>% 
+  mutate(extendpupil=extend_blinks(right.pupil_diameter_mm, fillback=100, fillforward=100, hz=90))
+
+
+extended<-ggplot(data=df.eye.pup_extended[df.eye.pup_extended$trial %in% trials,],aes(x=time,y=extendpupil))+
+  geom_path()+
+  facet_wrap(~trial)
+
+ggarrange(raw,extended,nrow=2)
+
+```
+
+```{r}
+
+df.eye.smooth_interp <- smooth_interpolate_pupil(df.eye.pup_extended, 
+                                          pupil="right.pupil_diameter_mm", 
+                                          extendpupil="extendpupil", 
+                                          extendblinks=TRUE, 
+                                          step.first="interp", 
+                                          filter="moving",
+                                          maxgap=Inf, 
+                                          type="linear", 
+                                          hz=90, 
+                                          n=5)
+
+smoothed <-ggplot(data=df.eye.smooth_interp[df.eye.smooth_interp$trial %in% trials,],aes(x=time,y=pup_interp))+
+  geom_path()+
+  facet_wrap(~trial)
+
+ggarrange(raw,extended,smoothed,nrow=3)
+```
+```{r}
+
+```
+
