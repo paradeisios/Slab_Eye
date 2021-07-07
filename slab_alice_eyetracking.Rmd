@@ -382,12 +382,14 @@ df.eye.pupilz %>%
   summarise(M=mean(pupilz),SD=sd(pupilz)) -> quick.summary
 
 
-ggline(quick.summary, x = "Alteration", y = "M", color = "if.Altered",
+line <- ggline(quick.summary, x = "Alteration", y = "M", color = "if.Altered",
        add = c("dotplot"),
        palette = c("#00AFBB", "#E7B800"))
 
 
+line
 print(quick.summary)
+
 ```
 ```{r}
 df.eye.pupilz <- drop_na(df.eye.pupilz)
