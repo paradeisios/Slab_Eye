@@ -263,7 +263,7 @@ head(df.eye.raw,50)
 ```{r}
 corr <- ggplot(data=df.eye.raw,aes(x=right.pupil_diameter_mm,left.pupil_diameter_mm))+
   geom_point()+
-  ggtitle(sprintf("Right/Left Diameter - Correlation: %.3f",cor(df$right.pupil_diameter_mm,df$right.pupil_diameter_mm,use="complete.obs")))+
+  ggtitle(sprintf("Right/Left Diameter - Correlation: %.3f",cor(df$right.pupil_diameter_mm,df$left.pupil_diameter_mm,use="complete.obs")))+
   labs(x="Right",y="Left")+ 
   theme(plot.title = element_text(size = 10))
 
@@ -287,6 +287,7 @@ z <- ggplot(data=df.eye.raw,aes(x=right.gaze_direction_normalized.z,left.gaze_di
 
 ggarrange(corr,x,y,z,ncol=2,nrow=2)
 ```
+
 
 ```{r}
 trials <- 1
@@ -328,7 +329,113 @@ smoothed <-ggplot(data=df.eye.smooth_interp[df.eye.smooth_interp$trial %in% tria
 
 ggarrange(raw,extended,smoothed,nrow=3)
 ```
-```{r}
 
+
+```{r fig1, fig.height = 12, fig.width = 17}
+df.eye.baseline <- baseline_correction_pupil(datafile = df.eye.smooth_interp,
+                                            pupil_colname = "pup_interp",
+                                            baseline_window = c(2500,2600))
+
+baselined <-ggplot(data=df.eye.baseline[df.eye.baseline$trial %in% trials,],aes(x=time,y=baselinecorrectedp))+
+  geom_path()+
+  facet_wrap(~trial)
+
+ggarrange(raw,extended,smoothed,baselined,nrow=4)
+```
+
+
+```{r}
+before<-ggplot(df.eye.baseline,aes(x=baselinecorrectedp))+
+  geom_histogram(aes(y=..count..),color="red",binwidth=.005)+
+  ggtitle("Pupil Values before outlier removal ")
+
+df.eye.outliers <- df.eye.baseline %>%
+  filter(baselinecorrectedp>=-2 & baselinecorrectedp<=2)
+
+after <- ggplot(df.eye.outliers,aes(x=baselinecorrectedp))+
+  geom_histogram(aes(y=..count..),color="red",binwidth=.005)+
+  ggtitle("Pupil Values after outlier removal ")
+
+ggarrange(before,after,ncol=2)
+```
+
+```{r,fig2, fig.height = 15, fig.width = 17}
+df.eye.pupilz<-df.eye.outliers%>% 
+  group_by(subject, trial) %>% 
+  mutate(pupilz=scale(baselinecorrectedp))
+
+
+pupilz <-ggplot(data=df.eye.pupilz[df.eye.pupilz$trial %in% trials,],aes(x=time,y=pupilz))+
+  geom_path()+
+  facet_wrap(~trial)
+
+ggarrange(raw,extended,smoothed,baselined,pupilz,nrow=5)
+```
+
+```{r}
+df.eye.pupilz$Alteration <- as.factor(df.eye.pupilz$Alteration)
+df.eye.pupilz$if.Altered <- as.factor(df.eye.pupilz$if.Altered)
+
+df.eye.pupilz %>%
+  filter(What.Visible=="Room") %>%
+  group_by(Alteration,if.Altered) %>%
+  summarise(M=mean(pupilz),SD=sd(pupilz)) -> quick.summary
+
+
+ggline(quick.summary, x = "Alteration", y = "M", color = "if.Altered",
+       add = c("dotplot"),
+       palette = c("#00AFBB", "#E7B800"))
+
+
+print(quick.summary)
+```
+```{r}
+df.eye.pupilz <- drop_na(df.eye.pupilz)
+
+ggplot(df.eye.pupilz,aes(x=time,y=pupilz,color=if.Altered))+
+  geom_smooth()+
+  ggtitle("Αvg. Pupil")+
+  labs(x="Time(ms)",y="Norm. Pupil")
+
+```
+
+
+
+
+
+```{r,fig3, fig.height = 7, fig.width = 17}
+df.eye.pupilz <- drop_na(df.eye.pupilz)
+
+speed <- ggplot(df.eye.pupilz[df.eye.pupilz$Alteration=="Speed",],aes(x=time,y=pupilz,color=if.Altered))+
+  geom_smooth()+
+  ggtitle("Speed")+
+  labs(x="Time(ms)",y="Norm. Pupil")
+
+delay <- ggplot(df.eye.pupilz[df.eye.pupilz$Alteration=="Delay",],aes(x=time,y=pupilz,color=if.Altered))+
+  geom_smooth()+
+  ggtitle("Delay")+
+  labs(x="Time(ms)",y="Norm. Pupil")
+
+grow <- ggplot(df.eye.pupilz[df.eye.pupilz$Alteration=="Grow",],aes(x=time,y=pupilz,color=if.Altered))+
+  geom_smooth()+
+  ggtitle("Grow")+
+  labs(x="Time(ms)",y="Norm. Pupil")
+
+shrink <- ggplot(df.eye.pupilz[df.eye.pupilz$Alteration=="Shrink",],aes(x=time,y=pupilz,color=if.Altered))+
+  geom_smooth()+
+  ggtitle("Shrink")+
+  labs(x="Time(ms)",y="Norm. Pupil")
+
+saturation <- ggplot(df.eye.pupilz[df.eye.pupilz$Alteration=="Saturation",],aes(x=time,y=pupilz,color=if.Altered))+
+  geom_smooth()+
+  ggtitle("Saturation")+
+  labs(x="Time(ms)",y="Norm. Pupil")
+
+ripple <- ggplot(df.eye.pupilz[df.eye.pupilz$Alteration=="Ripple",],aes(x=time,y=pupilz,color=if.Altered))+
+  geom_smooth()+
+  ggtitle("Ripple")+
+  labs(x="Time(ms)",y="Norm. Pupil")
+
+ggarrange(speed,delay,grow,shrink,saturation,ripple,nrow=2,ncol = 3)
 ```
 
