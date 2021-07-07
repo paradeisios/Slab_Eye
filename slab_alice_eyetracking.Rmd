@@ -15,6 +15,7 @@ library(ggpubr)
 library(lubridate)
 library(ggpubr)
 library(mgcv)
+library(viridis)
 
 options(scipen = 999)
 options(digits.secs=3)
@@ -227,6 +228,17 @@ add.whether.altered <- function(df) {
   ifelse(df$if.Altered == "NA",NA,df$if.Altered) -> df$if.Altered
   
   return(df)}
+
+add.baseline.message <- function(df){
+
+  df %>% 
+    group_by(trial) %>% 
+    mutate(message = ifelse(time == max(time),"here",NA)) -> df
+  
+  return(df)
+}
+  
+
 ```
 
 ```{r}
@@ -245,6 +257,7 @@ df %>% add.trials() -> df # add onset of each trial
 df %>% group_by(trial) %>% mutate(time = time - first(time)) -> df
 df %>% add.conditions() -> df
 df %>% add.whether.altered -> df
+df %>% add.baseline.message() -> df
 df$subject <- rep(1,length(df$FrameNumber))
 ifelse(df$right.pupil_diameter_mm == -1,NA,df$right.pupil_diameter_mm) -> df$right.pupil_diameter_mm
 ifelse(df$left.pupil_diameter_mm  == -1,NA,df$left.pupil_diameter_mm) ->  df$left.pupil_diameter_mm
@@ -252,11 +265,11 @@ ifelse(df$left.pupil_diameter_mm  == -1,NA,df$left.pupil_diameter_mm) ->  df$lef
 
 ```{r}
 
-df %>% select(subject,time,trial,
+df %>% select(subject,time,trial,message,
               right.pupil_diameter_mm,left.pupil_diameter_mm,
               right.gaze_direction_normalized.x,right.gaze_direction_normalized.y,right.gaze_direction_normalized.z,
               left.gaze_direction_normalized.x,left.gaze_direction_normalized.y,left.gaze_direction_normalized.z,
-              LastObject,What.Visible,Alteration,if.Altered,if.Ascending,) -> df.eye.raw
+              LastObject,What.Visible,Alteration,if.Altered,if.Ascending) -> df.eye.raw
 head(df.eye.raw,50)
 ```
 
@@ -332,9 +345,10 @@ ggarrange(raw,extended,smoothed,nrow=3)
 
 
 ```{r fig1, fig.height = 12, fig.width = 17}
-df.eye.baseline <- baseline_correction_pupil(datafile = df.eye.smooth_interp,
-                                            pupil_colname = "pup_interp",
-                                            baseline_window = c(2500,2600))
+df.eye.baseline <- baseline_correction_pupil_msg(datafile = df.eye.smooth_interp,
+                                                 pupil_colname = "pup_interp",
+                                                 baseline_dur = 10,
+                                                 event="target")
 
 baselined <-ggplot(data=df.eye.baseline[df.eye.baseline$trial %in% trials,],aes(x=time,y=baselinecorrectedp))+
   geom_path()+
@@ -372,6 +386,19 @@ pupilz <-ggplot(data=df.eye.pupilz[df.eye.pupilz$trial %in% trials,],aes(x=time,
 ggarrange(raw,extended,smoothed,baselined,pupilz,nrow=5)
 ```
 
+
+```{r,fig5,fig.height = 7, fig.width = 17}
+r.eye <- ggplot(data=df.eye.pupilz,aes(x=right.gaze_direction_normalized.x,y=right.gaze_direction_normalized.y,color=pupilz))+
+  geom_point()+
+  scale_color_viridis(option = "D")
+l.eye <- ggplot(data=df.eye.pupilz,aes(x=left.gaze_direction_normalized.x,y=left.gaze_direction_normalized.y,color=pupilz))+
+  geom_point()+
+  scale_color_viridis(option = "D")
+
+ggarrange(r.eye,l.eye,ncol = 2)
+```
+
+
 ```{r}
 df.eye.pupilz$Alteration <- as.factor(df.eye.pupilz$Alteration)
 df.eye.pupilz$if.Altered <- as.factor(df.eye.pupilz$if.Altered)
@@ -391,6 +418,7 @@ line
 print(quick.summary)
 
 ```
+
 ```{r}
 df.eye.pupilz <- drop_na(df.eye.pupilz)
 
@@ -439,5 +467,16 @@ ripple <- ggplot(df.eye.pupilz[df.eye.pupilz$Alteration=="Ripple",],aes(x=time,y
   labs(x="Time(ms)",y="Norm. Pupil")
 
 ggarrange(speed,delay,grow,shrink,saturation,ripple,nrow=2,ncol = 3)
+```
+
+```{r,fig10,fig.height = 7, fig.width = 17}
+r.eye <- ggplot(data=df.eye.pupilz,aes(x=right.gaze_direction_normalized.x,y=right.gaze_direction_normalized.y,color=pupilz))+
+  geom_point()+
+  scale_color_viridis(option = "D")
+l.eye <- ggplot(data=df.eye.pupilz,aes(x=left.gaze_direction_normalized.x,y=left.gaze_direction_normalized.y,color=pupilz))+
+  geom_point()+
+  scale_color_viridis(option = "D")
+
+ggarrange(r.eye,l.eye,ncol = 2)
 ```
 
