@@ -233,7 +233,7 @@ add.baseline.message <- function(df){
 
   df %>% 
     group_by(trial) %>% 
-    mutate(message = ifelse(time == max(time),"here",NA)) -> df
+    mutate(message = ifelse(time == max(time),"target",NA)) -> df
   
   return(df)
 }
@@ -242,7 +242,7 @@ add.baseline.message <- function(df){
 ```
 
 ```{r}
-df_fname <- "C:\\Users\\mpoul\\Desktop\\eye_tracking_data\\paris\\20210705120936942\\TrackersOutputData.csv"
+df_fname <- "C:\\Users\\mpoul\\Desktop\\eye_tracking_data\\jnd bad encoder\\TrackersOutputData.csv"
 df <- read.csv(df_fname )
 ```
 
@@ -320,8 +320,9 @@ extended<-ggplot(data=df.eye.pup_extended[df.eye.pup_extended$trial %in% trials,
   facet_wrap(~trial)
 
 ggarrange(raw,extended,nrow=2)
-
 ```
+
+
 
 ```{r}
 
@@ -344,7 +345,7 @@ ggarrange(raw,extended,smoothed,nrow=3)
 ```
 
 
-```{r fig1, fig.height = 12, fig.width = 17}
+```{r fig1, fig.height = 6, fig.width = 15}
 df.eye.baseline <- baseline_correction_pupil_msg(datafile = df.eye.smooth_interp,
                                                  pupil_colname = "pup_interp",
                                                  baseline_dur = 10,
@@ -403,6 +404,8 @@ ggarrange(r.eye,l.eye,ncol = 2)
 df.eye.pupilz$Alteration <- as.factor(df.eye.pupilz$Alteration)
 df.eye.pupilz$if.Altered <- as.factor(df.eye.pupilz$if.Altered)
 
+
+
 df.eye.pupilz %>%
   filter(What.Visible=="Room") %>%
   group_by(Alteration,if.Altered) %>%
@@ -420,7 +423,9 @@ print(quick.summary)
 ```
 
 ```{r}
-df.eye.pupilz <- drop_na(df.eye.pupilz)
+df.eye.pupilz %>%
+  filter(What.Visible=="Room") ->df.eye.pupilz
+
 
 ggplot(df.eye.pupilz,aes(x=time,y=pupilz,color=if.Altered))+
   geom_smooth()+
@@ -430,12 +435,7 @@ ggplot(df.eye.pupilz,aes(x=time,y=pupilz,color=if.Altered))+
 ```
 
 
-
-
-
-```{r,fig3, fig.height = 7, fig.width = 17}
-df.eye.pupilz <- drop_na(df.eye.pupilz)
-
+```{r,fig3, fig.height = 10, fig.width = 17}
 speed <- ggplot(df.eye.pupilz[df.eye.pupilz$Alteration=="Speed",],aes(x=time,y=pupilz,color=if.Altered))+
   geom_smooth()+
   ggtitle("Speed")+
@@ -469,14 +469,5 @@ ripple <- ggplot(df.eye.pupilz[df.eye.pupilz$Alteration=="Ripple",],aes(x=time,y
 ggarrange(speed,delay,grow,shrink,saturation,ripple,nrow=2,ncol = 3)
 ```
 
-```{r,fig10,fig.height = 7, fig.width = 17}
-r.eye <- ggplot(data=df.eye.pupilz,aes(x=right.gaze_direction_normalized.x,y=right.gaze_direction_normalized.y,color=pupilz))+
-  geom_point()+
-  scale_color_viridis(option = "D")
-l.eye <- ggplot(data=df.eye.pupilz,aes(x=left.gaze_direction_normalized.x,y=left.gaze_direction_normalized.y,color=pupilz))+
-  geom_point()+
-  scale_color_viridis(option = "D")
 
-ggarrange(r.eye,l.eye,ncol = 2)
-```
 
