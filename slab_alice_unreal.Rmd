@@ -1,6 +1,6 @@
 ---
 title: "slab_alice_unreal"
-output: html_document
+output: html_notebook
 ---
 
 ```{r}
@@ -137,7 +137,7 @@ df %>%
 ```
 
 
-```{r}
+```{r,fig.height = 6, fig.width = 15}
 corr <- ggplot(data=df.eye.raw,aes(x=right.pupil_diameter_mm,left.pupil_diameter_mm))+
   geom_point()+
   ggtitle(sprintf("Right/Left Diameter - Correlation: %.3f",cor(df$right.pupil_diameter_mm,df$left.pupil_diameter_mm,use="complete.obs")))+
