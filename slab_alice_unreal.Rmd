@@ -310,4 +310,3 @@ ggplot(data=pupil_summary, aes(x=Magnitude, y=pupil)) +
   facet_wrap(~Alteration)+
   ggtitle("Pupil Size ~ Magnitude x Alteration")
 ```
-
