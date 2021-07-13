@@ -86,13 +86,26 @@ add.baseline.message <- function(df){
   
   return(df)
 }
+
+condition.fix <- function(x){
+  
+  code <- c(6001,6002,1201,1202,29,33,3001,3002,2201,2202)
+  alterations <- c("Shink","Grow","Slow","Speed","HandDelay","Ripple","HighSaturation","LowSaturation","LowGravity","HighGravity")
+  
+  pos <- which(x == code)
+  alteration <- alterations[pos]
+  return(alteration)
+}
 ```
 
 ```{r}
 path.to.data <- choose.dir(default = "", caption = "Select folder")
 
 df <- file.path(path.to.data,"TrackersOutputData.csv") %>% read.csv()
+
 df.trials <- file.path(path.to.data,"trials.csv") %>% read.csv() %>% select(X1.1,X0.12,X1) %>% rename(trial = X1.1, Alteration = X0.12, Magnitude = X1) 
+df.trials$Alteration <- unlist(lapply(df.trials$Alteration, condition.fix)) # convert codes of alterations into titles
+
 df.answers <- file.path(path.to.data,"Answers.csv") %>% read.csv() %>% select(BlockNumber,QuestionResult) %>% rename(trial = BlockNumber) %>% filter (trial!=1)
 ```
 
@@ -116,6 +129,8 @@ df %>%
               right.gaze_direction_normalized.x,right.gaze_direction_normalized.y,right.gaze_direction_normalized.z,
               left.gaze_direction_normalized.x,left.gaze_direction_normalized.y,left.gaze_direction_normalized.z,
               LastObject,What.Visible,Alteration,Magnitude,QuestionResult) -> df.eye.raw
+
+
 ```
 
 
