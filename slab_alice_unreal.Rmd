@@ -12,6 +12,7 @@ library(lubridate)
 library(ggpubr)
 library(viridis)
 ```
+
 ```{r}
 fix.time <- function(df){
   
@@ -90,7 +91,7 @@ add.baseline.message <- function(df){
 condition.fix <- function(x){
   
   code <- c(6001,6002,1201,1202,29,33,3001,3002,2201,2202)
-  alterations <- c("Shink","Grow","Slow","Speed","HandDelay","Ripple","HighSaturation","LowSaturation","LowGravity","HighGravity")
+  alterations <- c("Shrink","Grow","SlowTime","FastTime","RealDelay","Ripple","HighSaturation","LowSaturation","LowGravity","HighGravity")
   
   pos <- which(x == code)
   alteration <- alterations[pos]
@@ -130,7 +131,9 @@ df %>%
               left.gaze_direction_normalized.x,left.gaze_direction_normalized.y,left.gaze_direction_normalized.z,
               LastObject,What.Visible,Alteration,Magnitude,QuestionResult) -> df.eye.raw
 
-
+ df.eye.raw$Alteration <- as.factor(df.eye.raw$Alteration)
+ df.eye.raw$What.Visible <- as.factor(df.eye.raw$What.Visible)
+  df.eye.raw$Magnitude <- as.factor(df.eye.raw$Magnitude)
 ```
 
 
@@ -260,12 +263,39 @@ ggarrange(r.eye,l.eye,ncol = 2)
 ```
 ```{r}
 df.eye.pupilz %>%
-  filter(What.Visible=="Room") ->df.eye.pupilz
+  filter(What.Visible=="Room") ->df.eye.forPlots
 
 
 ggplot(df.eye.pupilz,aes(x=time,y=pupilz))+
   geom_smooth()+
   ggtitle("Αvg. Pupil")+
   labs(x="Time(ms)",y="Norm. Pupil")
+```
+```{r,fig.height = 10, fig.width = 14}
+
+ggplot(df.eye.forPlots,aes(x=time,y=pupilz))+
+  geom_smooth()+
+  ggtitle("Αvg. Pupil")+
+  labs(x="Time(ms)",y="Norm. Pupil")+
+  facet_wrap(~Alteration)+
+  ggtitle("Overall Average of Pupil Timecourse per. Alteration")
+```
+```{r,fig.width = 14}
+ggplot(df.eye.pupilz,aes(x=time,y=pupilz,color=Magnitude))+
+  geom_smooth()+
+  ggtitle("Αvg. Pupil per Magnitude")+
+  labs(x="Time(ms)",y="Norm. Pupil")
+```
+
+```{r,fig.width = 15,fig.height = 12}
+ggplot(df.eye.forPlots,aes(x=time,y=pupilz,color=Magnitude))+
+  geom_smooth()+
+  ggtitle("Αvg. Pupil")+
+  labs(x="Time(ms)",y="Norm. Pupil")+
+  facet_wrap(~Alteration)+
+  ggtitle("Overall Average of Pupil Timecourse per. Alteration")
+```
+```{r}
+
 ```
 
