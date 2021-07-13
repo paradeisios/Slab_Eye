@@ -281,7 +281,7 @@ ggplot(df.eye.forPlots,aes(x=time,y=pupilz))+
   ggtitle("Overall Average of Pupil Timecourse per. Alteration")
 ```
 ```{r,fig.width = 14}
-ggplot(df.eye.pupilz,aes(x=time,y=pupilz,color=Magnitude))+
+ggplot(df.eye.forPlots,aes(x=time,y=pupilz,color=Magnitude))+
   geom_smooth()+
   ggtitle("Αvg. Pupil per Magnitude")+
   labs(x="Time(ms)",y="Norm. Pupil")
@@ -296,6 +296,18 @@ ggplot(df.eye.forPlots,aes(x=time,y=pupilz,color=Magnitude))+
   ggtitle("Overall Average of Pupil Timecourse per. Alteration")
 ```
 ```{r}
+df.eye.forPlots %>%
+  group_by(Alteration,Magnitude)%>%
+  summarise(pupil = mean(pupilz)) -> pupil_summary
 
+pup_magn <- ggline(pupil_summary,x="Magnitude", y="pupil",add = c("mean_se"),title ="Mean pupil size per Magnitude",xlab = "Magnitude",ylab = "Normalized Pupil Size")
+pup_magn
+```
+```{r,fig.width = 15}
+ggplot(data=pupil_summary, aes(x=Magnitude, y=pupil)) +
+  stat_summary(fun = mean, geom="point") +
+  stat_summary(fun=mean, geom="line",group = 1) + 
+  facet_wrap(~Alteration)+
+  ggtitle("Pupil Size ~ Magnitude x Alteration")
 ```
 
