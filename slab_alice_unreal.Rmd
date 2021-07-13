@@ -92,8 +92,8 @@ add.baseline.message <- function(df){
 path.to.data <- choose.dir(default = "", caption = "Select folder")
 
 df <- file.path(path.to.data,"TrackersOutputData.csv") %>% read.csv()
-df.trials <- file.path(path.to.data,"trials.csv") %>% read.csv()
-df.asnwers <- file.path(path.to.data,"Answers.csv") %>% read.csv()
+df.trials <- file.path(path.to.data,"trials.csv") %>% read.csv() %>% select(X1.1,X0.12,X1) %>% rename(trial = X1.1, Alteration = X0.12, Magnitude = X1) 
+df.answers <- file.path(path.to.data,"Answers.csv") %>% read.csv() %>% select(BlockNumber,QuestionResult) %>% rename(trial = BlockNumber) %>% filter (trial!=1)
 ```
 
 ```{r}
@@ -108,12 +108,16 @@ ifelse(df$left.pupil_diameter_mm  == -1,NA,df$left.pupil_diameter_mm) ->  df$lef
 ```
 
 ```{r}
-df %>% select(subject,time,trial,message,
+df %>% 
+  right_join(.,df.trials,by="trial")  %>% # add alteration and magnitude from trials.csv
+  right_join(.,df.answers,by="trial")  %>% # add subject response from Answers.csv
+  select(subject,time,trial,message,
               right.pupil_diameter_mm,left.pupil_diameter_mm,
               right.gaze_direction_normalized.x,right.gaze_direction_normalized.y,right.gaze_direction_normalized.z,
               left.gaze_direction_normalized.x,left.gaze_direction_normalized.y,left.gaze_direction_normalized.z,
-              LastObject,What.Visible) -> df.eye.raw
+              LastObject,What.Visible,Alteration,Magnitude,QuestionResult) -> df.eye.raw
 ```
+
 
 ```{r}
 corr <- ggplot(data=df.eye.raw,aes(x=right.pupil_diameter_mm,left.pupil_diameter_mm))+
@@ -143,7 +147,7 @@ z <- ggplot(data=df.eye.raw,aes(x=right.gaze_direction_normalized.z,left.gaze_di
 ggarrange(corr,x,y,z,ncol=2,nrow=2)
 ```
 
-```{r}
+```{r,fig.height = 6, fig.width = 15}
 trials <- 2
 
 raw<-ggplot(data=df.eye.raw[df.eye.raw$trial %in% trials,],aes(x=time,y=right.pupil_diameter_mm))+
@@ -151,7 +155,7 @@ raw<-ggplot(data=df.eye.raw[df.eye.raw$trial %in% trials,],aes(x=time,y=right.pu
 
 raw
 ```
-```{r}
+```{r,fig.height = 6, fig.width = 15}
 df.eye.pup_extended<- df.eye.raw %>% 
   mutate(extendpupil=extend_blinks(right.pupil_diameter_mm, fillback=100, fillforward=100, hz=90))
 
@@ -165,7 +169,7 @@ ggarrange(raw,extended,nrow=2)
 
 
 
-```{r}
+```{r,fig.height = 6, fig.width = 15}
 
 df.eye.smooth_interp <- smooth_interpolate_pupil(df.eye.pup_extended, 
                                           pupil="right.pupil_diameter_mm", 
