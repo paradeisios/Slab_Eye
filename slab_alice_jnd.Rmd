@@ -3,7 +3,6 @@ title: "Slab Alice Eye-Tracking"
 output: html_notebook
 ---
 
-
 ```{r,results='hide'}
 rm(list = ls())
 

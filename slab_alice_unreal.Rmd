@@ -5,6 +5,7 @@ output:
     df_print: paged
 ---
 
+
 ```{r}
 library(tidyverse)
 library(ggplot2)
@@ -14,9 +15,26 @@ library(lubridate)
 library(ggpubr)
 library(viridis)
 ```
+Okay, so these are the only supplimentary functions you need to run the code. Lets go through them
+
+1. fix.time. Currently, in the output eyetracker dataframe, time is encoded sequentially, as this 161514123, where it represents hour,minute,second and precision of 
+    3 milliseconds. So this code recordes everything to make it more easy to understand, ie in standard datetime format (16:15:14.123). This is slow, because I could
+    not find any premade function that does this automatically. You can search for a function that broadcasts this transformation to make it easier. The second column
+    it creates, it is named time. And this simply is a sequential counter of the milliseconds since the start of the experiment. Since in the end, any 
+    grouping/preprocessing will be done on a millisecond scale, its good to have it already premade. The code looks for a change of minutes, and add 1000 * how many           minutes have elapsed  to the current millisecond value.
+    
+    
+2. add.visibility. This functions finds what the subject was looking at based on the secondary scene name. If there is a marker of blockviewturnorder, then the code
+    marks that frame as the subject seeing darkness. Else, if there was a marker of blockviewdroporder, then the code marks that frame based on the actual scene name          (question/room).
+    
+3.add.baseline.message. In order to run baseline correction in pupil eye tracking, you need either a fixed time period (lets say 1000-1500 ms since trial onset) where you     know that your pupil is always going to be close to baseline or you need a marker before a specific event, so that you can extract the timecourse before that event. 
+    In my code, I use the second, as we discussed with Roy to choose the period from the blackscreen. Add.baseline.message creates a column titled "message" in the            dataframe, where there is string "target" at the location where the trial ended.
+
+4.condition.fix. Transforms the codes into a string that is easier to read.
 
 ```{r}
 fix.time <- function(df){
+  
   
   library(lubridate)
   library(stringi)
@@ -92,7 +110,7 @@ add.baseline.message <- function(df){
 
 condition.fix <- function(x){
   
-  code <- c(6001,6002,1201,1202,29,33,3001,3002,2201,2202)
+  code <-        c(6001,      6002,     1201,       1202,        29,      33,               3001,          3002,         2201,     2202)
   alterations <- c("Shrink","Grow","SlowTime","FastTime","RealDelay","Ripple","HighSaturation","LowSaturation","LowGravity","HighGravity")
   
   pos <- which(x == code)
@@ -100,6 +118,16 @@ condition.fix <- function(x){
   return(alteration)
 }
 ```
+
+Okay lets start collecting all of our data. You need 3 csv. TrackersOutputData.csv, trials.csv and Answers.csv. Just provide the path of the folder they are contained.
+
+df -> Your eye tracker data
+
+df.trials -> Your alterations and magnitude
+
+df.answers -> Your subject unreal responses and response times
+
+IMPORTANT. All 3 dataframes should have a column named "trial" that starts from 2 (which means calibration is excluded), so that you can eventually join all of them
 
 ```{r}
 path.to.data <- choose.dir(default = "", caption = "Select folder")
@@ -112,16 +140,27 @@ df.trials$Alteration <- unlist(lapply(df.trials$Alteration, condition.fix)) # co
 df.answers <- file.path(path.to.data,"Answers.csv") %>% read.csv() %>% select(BlockNumber,QuestionResult,ResponseTime) %>% rename(trial = BlockNumber) %>% filter (trial!=1)
 ```
 
+So you have arrived at the cleaning part. Great. Have you read what the custom functions do? No? Come on, I spent like 10 minutes doing it. Do it for me.
+Okay, now that you know what they do, cleaning just makes the columns more adequate for preprocessing.
+
+Most important is to check that the time column is 
+
+1. correctly in milliseconds and restarts after every trial. 
+2. there are no duplicate columns
+3. There are no -1 in your pupil dilation, because you need blinks marked as NA in order for deblinking to work.
+
 ```{r}
 df %>% add.visibility() -> df # add a column that specifies what the subject was looking at (Darkness, Room, Question)
 df %>% mutate(FrameNumber = as.factor(FrameNumber))  %>% group_by(FrameNumber)  %>% filter (!duplicated(FrameNumber)) -> df # remove duplicate columns
 df %>% rename(trial = BlockNumber) %>% filter(trial!=1) -> df #clean trials and remove callibration phase
 df %>% fix.time() %>% group_by(trial) %>% mutate(time = time - first(time)) -> df # add a column that for each trial restarts the time in milliseconds
 df %>% add.baseline.message() -> df # adds a message column where the target message is used in the baseline removal
-df$subject <- rep(1,length(df$FrameNumber))
+df$subject <- rep(1,length(df$FrameNumber)) #this adds a column of 1 so that you have a unique id for subjects
 ifelse(df$right.pupil_diameter_mm == -1,NA,df$right.pupil_diameter_mm) -> df$right.pupil_diameter_mm
 ifelse(df$left.pupil_diameter_mm  == -1,NA,df$left.pupil_diameter_mm) ->  df$left.pupil_diameter_mm
 ```
+
+Time to join the dataframes. Double check that all dataframes have a trial column with the same unique vaulues, starting from 2 and ending at the same trial.
 
 ```{r}
 df %>% 
@@ -133,9 +172,20 @@ df %>%
               left.gaze_direction_normalized.x,left.gaze_direction_normalized.y,left.gaze_direction_normalized.z,
               LastObject,What.Visible,Alteration,Magnitude,QuestionResult) -> df.eye.raw
 
- df.eye.raw$Alteration <- as.factor(df.eye.raw$Alteration)
- df.eye.raw$What.Visible <- as.factor(df.eye.raw$What.Visible)
-  df.eye.raw$Magnitude <- as.factor(df.eye.raw$Magnitude)
+df.eye.raw$Alteration <- as.factor(df.eye.raw$Alteration)
+df.eye.raw$What.Visible <- as.factor(df.eye.raw$What.Visible)
+df.eye.raw$Magnitude <- as.factor(df.eye.raw$Magnitude)
+
+write.csv(df.eye.raw,file.path(getwd(),"megadf.csv")) #save mega df for one subject
+```
+
+Data from the eye tracker are sampled at 90Hz. Standard downsampling is to 50Hz. You should consider downsampling to 30Hz, as the luminance information will be output in 30Hz. This step is not really important for the analysis in this R script.
+```{r}
+downsample = TRUE
+if (downsample){
+  
+  df.eye.raw %>% downsample_pupil(bin.length=30,aggvars= NULL ) -> df.eye.raw
+}
 ```
 
 
@@ -167,6 +217,7 @@ z <- ggplot(data=df.eye.raw,aes(x=right.gaze_direction_normalized.z,left.gaze_di
 ggarrange(corr,x,y,z,ncol=2,nrow=2)
 ```
 
+
 ```{r,fig.height = 6, fig.width = 15}
 trials <- 2
 
@@ -175,6 +226,9 @@ raw<-ggplot(data=df.eye.raw[df.eye.raw$trial %in% trials,],aes(x=time,y=right.pu
 
 raw
 ```
+
+Blinks are stored as NAs in the current iteration of your preprocessing dataframe. A good practise is to remove a chunk of data before and after the blink because, there is a gradual decrease towards the closed eye and increase back to pre-blink eye size. extend_blinks will do this removal automatically with the fillback and fillforward arguements. 
+
 ```{r,fig.height = 6, fig.width = 15}
 df.eye.pup_extended<- df.eye.raw %>% 
   mutate(extendpupil=extend_blinks(right.pupil_diameter_mm, fillback=100, fillforward=100, hz=90))
@@ -187,7 +241,8 @@ extended<-ggplot(data=df.eye.pup_extended[df.eye.pup_extended$trial %in% trials,
 ggarrange(raw,extended,nrow=2)
 ```
 
-
+Since you have a lot of NAs, you can consider interpolating and then smoothing. Interpolation is usually linear or 3rd degree polynomical. But differences are minor
+Smoothing is done with a moving window average. For more options, check the documenetation in gazer::smooth_interpolate_pupil
 
 ```{r,fig.height = 6, fig.width = 15}
 
@@ -208,12 +263,12 @@ smoothed <-ggplot(data=df.eye.smooth_interp[df.eye.smooth_interp$trial %in% tria
 
 ggarrange(raw,extended,smoothed,nrow=3)
 ```
-
+Pupil sizes varies a lot between subjects and trias. Thats why usually, you select a period to baseline correct. Substraction is enough, as pupil effects are quite linear. For this, you need a column named "message", that provides the stamp of the period, before which you think your eye was in baseline. Choice of baseline is usually irrelevant, as long as it is constant in all subjects/trials.
 
 ```{r fig1, fig.height = 6, fig.width = 15}
 df.eye.baseline <- baseline_correction_pupil_msg(datafile = df.eye.smooth_interp,
                                                  pupil_colname = "pup_interp",
-                                                 baseline_dur = 10,
+                                                 baseline_dur = 100,
                                                  event="target")
 
 baselined <-ggplot(data=df.eye.baseline[df.eye.baseline$trial %in% trials,],aes(x=time,y=baselinecorrectedp))+
@@ -238,6 +293,7 @@ after <- ggplot(df.eye.outliers,aes(x=baselinecorrectedp))+
 
 ggarrange(before,after,ncol=2)
 ```
+Its good to center the data, to remove effects of too big / small baseline.
 
 ```{r,fig2, fig.height = 15, fig.width = 17}
 df.eye.pupilz<-df.eye.outliers%>% 
@@ -265,7 +321,7 @@ ggarrange(r.eye,l.eye,ncol = 2)
 ```
 ```{r}
 df.eye.pupilz %>%
-  filter(What.Visible=="Room") ->df.eye.forPlots
+  filter(What.Visible=="Room")->df.eye.forPlots
 
 
 ggplot(df.eye.pupilz,aes(x=time,y=pupilz))+
@@ -312,7 +368,43 @@ ggplot(data=pupil_summary, aes(x=Magnitude, y=pupil)) +
   facet_wrap(~Alteration)+
   ggtitle("Pupil Size ~ Magnitude x Alteration")
 ```
-```{r}
 
-```
+Further readings: 
+
+General on preprocessing 
+
+1.Mathôt, S., Fabius, J., Van Heusden, E., & Van der Stigchel, S. (2018). Safe and sensible preprocessing and baseline correction of pupil-size data. Behavior Research Methods, 50(1), 94–106. https://doi.org/10.3758/s13428-017-1007-2
+
+2. Winn, M. B., Wendt, D., Koelewijn, T., & Kuchinsky, S. E. (2018). Best Practices and Advice for Using Pupillometry to Measure Listening Effort: An Introduction for Those Who Want to Get Started. Trends in Hearing, 22, 2331216518800869. https://doi.org/10.1177/2331216518800869
+
+About the software I used
+
+1.Geller, J., Winn, M.B., Mahr, T. et al. GazeR: A Package for Processing Gaze Position and Pupil Size Data. Behav Res 52, 2232–2255 (2020). https://doi.org/10.3758/s13428-020-01374-8
+
+Also, check the github: https://github.com/dmirman/gazer
+
+
+Other articles that run similar preprocessing
+
+1.Montes-Lourido, P., Kar, M., Kumbam, I. et al. Pupillometry as a reliable metric of auditory detection and discrimination across diverse stimulus paradigms in animal models. Sci Rep 11, 3108 (2021). https://doi.org/10.1038/s41598-021-82340-y
+
+2.ERP and pupil responses to deviance in an oddball paradigm
+
+3.Strauch, C., Koniakowsky, I., & Huckauf, A. (2020). Decision Making and Oddball Effects on Pupil Size: Evidence for a Sequential Process. Journal of cognition, 3(1), 7. https://doi.org/10.5334/joc.96
+
+
+HOW TO MODEL THE DATA:
+
+1.Mirman, D. (2014). Growth Curve Analysis and Visualization Using R. Boca Raton, FL: Chapman and Hall/CRC Press.
+
+2.van Rij, J., Hendriks, P., van Rijn, H., Baayen, R. H., & Wood, S. N. (2019). Analyzing the Time Course of Pupillometric Data. Trends in Hearing, 23, 233121651983248. https://doi.org/10.1177/2331216519832483
+
+Growth curve analysis is good, but GAMMs, as described in the seconds paper are a better alternative
+
+More on GAMMs
+
+https://jacolienvanrij.com/Tutorials/GAMM.html
+
+Porretta V., Kyröläinen AJ., van Rij J., Järvikivi J. (2018) Visual World Paradigm Data: From Preprocessing to Nonlinear Time-Course Analysis. In: Czarnowski I., Howlett R., Jain L. (eds) Intelligent Decision Technologies 2017. IDT 2017. Smart Innovation, Systems and Technologies, vol 73. Springer, Cham. https://doi.org/10.1007/978-3-319-59424-8_25
+
 
